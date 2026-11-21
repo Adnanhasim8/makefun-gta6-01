@@ -1,176 +1,208 @@
-// The story and the fares: three timed missions for fixer Lena Torres, in
-// order, plus the taxi fares that pay between missions. A mission starts
-// when the player presses E at its start marker; the HUD and the minimap
-// always point at the current objective.
+// Solmar City — the story: three jobs for fixer Vera, in order. Each mission
+// is a chain of steps with a 3D beacon marking the target, a briefing, a
+// payout, and (for the last one) a clock. Finish all three to beat the game.
 
-import { FARE, MISSIONS } from './config.js';
-import { randomRoadPoint } from './city.js';
-import { distance } from './random.js';
-import { spawnThug } from './combat.js';
-import { playMissionStart, playMissionDone, playMissionFail, playCash } from './audio.js';
+(function () {
+  'use strict';
 
-const NAMES = ['First Fare', 'The Marina Pickup', 'The Great Getaway'];
+  var MISSION_DEFS = [
+    {
+      id: 'hot-wheels',
+      title: '1 — Hot Wheels',
+      briefing: 'Vera needs a Comet GT, yellow, parked by the marina road. Take it — quietly or not — and bring it to the City Garage up north. The owner will call it in, so expect company.',
+      payout: 500,
+      steps: [
+        { kind: 'reach', text: 'Find the yellow Comet GT parked near the marina road', target: { x: 6, z: 104 }, radius: 6 },
+        { kind: 'steal', text: 'Steal the Comet GT (press E beside it)', target: { x: 6, z: 104 }, radius: 5, carName: 'Comet GT' },
+        { kind: 'deliverCar', text: 'Deliver the Comet GT to the City Garage', target: { x: 130, z: -130 }, radius: 13 },
+      ],
+    },
+    {
+      id: 'the-pickup',
+      title: '2 — The Pickup',
+      briefing: 'A package is waiting at the docks, east side, between the containers. Grab it on foot and bring it back to Café Vera. The dock crew tipped off the cops — two stars the moment you touch it.',
+      payout: 800,
+      steps: [
+        { kind: 'reach', text: 'Drive to the docks on the east side', target: { x: 178, z: 52 }, radius: 10 },
+        { kind: 'pickup', text: 'Get out and grab the package (stand on the marker)', target: { x: 178, z: 52 }, radius: 4, hold: 1.5 },
+        { kind: 'reach', text: 'Bring the package back to Café Vera', target: { x: -26, z: 78 }, radius: 11 },
+      ],
+    },
+    {
+      id: 'the-big-score',
+      title: '3 — The Big Score',
+      briefing: 'Solmar Jewelers, downtown. Walk up to the counter and stand there to clean it out. Three stars the second the alarm trips. Lose the cops and reach the safehouse in two minutes.',
+      payout: 1500,
+      steps: [
+        { kind: 'reach', text: 'Get to Solmar Jewelers downtown', target: { x: 26, z: -26 }, radius: 11 },
+        { kind: 'rob', text: 'Stand at the counter to clean out the jewelers', target: { x: 26, z: -16 }, radius: 4.5, hold: 3 },
+        { kind: 'escape', text: 'Escape to the safehouse — lose the cops!', target: { x: -130, z: -130 }, radius: 12, time: 120 },
+      ],
+    },
+  ];
 
-/** The next mission the player has not finished (0, 1, 2) or null when all are done. */
-export function nextMissionIndex(state) {
-  for (let i = 0; i < 3; i += 1) {
-    if (!state.missionsDone[i]) return i;
+  function Missions(scene, world) {
+    this.scene = scene;
+    this.world = world;
+    this.index = 0; // which mission is active
+    this.step = 0;
+    this.holdTimer = 0;
+    this.missionTimer = 0;
+    this.finished = false;
+    this.allDone = false;
+    // The beacon: a column of light and a ring at the current target.
+    var geo = new THREE.CylinderGeometry(2.2, 2.2, 30, 16, 1, true);
+    this.beacon = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+      color: 0xffd21f, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false,
+    }));
+    this.beacon.position.y = 15;
+    scene.add(this.beacon);
+    var ringGeo = new THREE.TorusGeometry(3, 0.25, 8, 32);
+    this.ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: 0xffd21f }));
+    this.ring.rotation.x = Math.PI / 2;
+    this.ring.position.y = 0.3;
+    scene.add(this.ring);
+    this.updateBeacon();
   }
-  return null;
-}
 
-/** Where the next mission starts (and its name), or null when the story is done. */
-export function missionStartPoint(state) {
-  const index = nextMissionIndex(state);
-  if (index === null) return null;
-  const lm = state.city.landmarks;
-  if (index === 0) return { x: lm.garage.x + lm.garage.w / 2, y: lm.garage.y + lm.garage.h / 2, label: `Lena Torres — ${NAMES[0]}` };
-  if (index === 1) return { x: lm.marina.x + lm.marina.w / 2, y: lm.marina.y + lm.marina.h / 2, label: `Lena Torres — ${NAMES[1]}` };
-  return { x: lm.garage.x + lm.garage.w / 2, y: lm.garage.y + lm.garage.h / 2, label: `Lena Torres — ${NAMES[2]}` };
-}
+  Missions.prototype.current = function () {
+    return MISSION_DEFS[this.index] || null;
+  };
 
-/** Try to start the next mission (E at its start marker). Returns true when one starts. */
-export function tryStartMission(state) {
-  if (state.mission) return false;
-  const start = missionStartPoint(state);
-  if (!start) return false;
-  if (distance(state.player.x, state.player.y, start.x, start.y) > 90) return false;
-  const index = nextMissionIndex(state);
-  const lm = state.city.landmarks;
-  if (index === 0) {
-    const pickup = randomRoadPoint(state.rng, state.city);
-    state.mission = {
-      id: 0, name: NAMES[0], stage: 'pickup',
-      timer: MISSIONS.firstFare, reward: MISSIONS.rewards[0],
-      target: { x: pickup.x, y: pickup.y, label: 'Pick up the fare' },
-      dest: { x: lm.hotel.x + lm.hotel.w / 2, y: lm.hotel.y + lm.hotel.h / 2, label: 'Drop off at the hotel' },
-    };
-  } else if (index === 1) {
-    state.mission = {
-      id: 1, name: NAMES[1], stage: 'pickup',
-      timer: MISSIONS.marinaPickup, reward: MISSIONS.rewards[1],
-      target: { x: lm.marina.x + 40, y: lm.marina.y + lm.marina.h - 30, label: 'Grab the package' },
-      dest: { x: lm.safehouse.x + lm.safehouse.w / 2, y: lm.safehouse.y + lm.safehouse.h / 2, label: 'Deliver to the safehouse' },
-    };
-  } else {
-    state.mission = {
-      id: 2, name: NAMES[2], stage: 'deliver',
-      timer: MISSIONS.getaway, reward: MISSIONS.rewards[2],
-      target: { x: lm.airfield.x + lm.airfield.w / 2, y: lm.airfield.y + lm.airfield.h / 2, label: 'Reach the airfield' },
-      dest: null,
-    };
-    // The getaway starts hot: the police are already on the player.
-    state.wanted = Math.max(state.wanted, 3);
-    state.wantedTimer = 0;
-  }
-  state.events.push({ type: 'missionStart', name: NAMES[index] });
-  playMissionStart();
-  return true;
-}
+  Missions.prototype.currentStep = function () {
+    var m = this.current();
+    return m ? m.steps[this.step] : null;
+  };
 
-function completeMission(state) {
-  const mission = state.mission;
-  state.player.cash += mission.reward;
-  state.missionsDone[mission.id] = true;
-  state.events.push({ type: 'missionDone', name: mission.name, amount: mission.reward });
-  playMissionDone();
-  state.mission = null;
-}
+  Missions.prototype.objectiveText = function () {
+    if (this.allDone) return 'All jobs done — Solmar is yours. Free roam!';
+    var m = this.current();
+    if (!m) return '';
+    var s = this.currentStep();
+    return m.title + ' — ' + (s ? s.text : '');
+  };
 
-function failMission(state, why) {
-  const mission = state.mission;
-  state.events.push({ type: 'missionFail', name: mission.name, why });
-  playMissionFail();
-  state.mission = null;
-}
+  Missions.prototype.target = function () {
+    var s = this.currentStep();
+    return s ? s.target : null;
+  };
 
-/** Advance the active mission one step (timer, stages, thugs, completion). */
-export function updateMission(state, dt) {
-  const mission = state.mission;
-  if (!mission) return;
-  mission.timer -= dt;
-  if (mission.timer <= 0) {
-    failMission(state, 'Out of time');
-    return;
-  }
-  const player = state.player;
-  if (mission.stage === 'pickup') {
-    if (distance(player.x, player.y, mission.target.x, mission.target.y) < 60) {
-      if (mission.id === 0) {
-        // First Fare: the passenger is in — now drive them to the hotel.
-        mission.stage = 'deliver';
-        mission.target = mission.dest;
-        state.events.push({ type: 'missionStage', name: mission.name, label: 'Passenger in — drive to the hotel' });
-      } else if (mission.id === 1) {
-        // Marina Pickup: the package is grabbed — thugs move in, run for the safehouse.
-        mission.stage = 'deliver';
-        mission.target = mission.dest;
-        for (let i = 0; i < 3; i += 1) {
-          spawnThug(state, player.x + 160 + i * 70, player.y - 120 + i * 60);
+  Missions.prototype.updateBeacon = function () {
+    var t = this.target();
+    var visible = !!t && !this.allDone;
+    this.beacon.visible = visible;
+    this.ring.visible = visible;
+    if (t) {
+      this.beacon.position.x = t.x;
+      this.beacon.position.z = t.z;
+      this.ring.position.x = t.x;
+      this.ring.position.z = t.z;
+    }
+  };
+
+  Missions.prototype.advance = function () {
+    var m = this.current();
+    this.step++;
+    this.holdTimer = 0;
+    if (this.step >= m.steps.length) {
+      // Mission complete: pay out and open the next one.
+      this.world.player.money += m.payout;
+      SC.audio.missionDone();
+      SC.audio.cash();
+      this.world.hud.bigMessage(m.title + ' complete!', '+' + SC.formatMoney(m.payout) + ' — ' + (this.index + 1 < MISSION_DEFS.length ? 'Vera has another job.' : 'That was the last job.'));
+      this.world.hud.say(m.title + ' complete. ' + SC.formatMoney(m.payout) + ' earned.');
+      this.index++;
+      this.step = 0;
+      if (this.index >= MISSION_DEFS.length) {
+        this.allDone = true;
+        this.world.hud.bigMessage('SOLMAR IS YOURS', 'All three jobs done. Free roam the city.');
+      } else {
+        var next = this.current();
+        this.world.hud.bigMessage(next.title, next.briefing);
+      }
+    }
+    this.updateBeacon();
+  };
+
+  Missions.prototype.fail = function (reason) {
+    SC.audio.missionFail();
+    this.world.hud.bigMessage('JOB FAILED', reason);
+    this.step = 0;
+    this.holdTimer = 0;
+    this.missionTimer = 0;
+    this.updateBeacon();
+  };
+
+  Missions.prototype.update = function (dt, input) {
+    if (this.allDone) return;
+    var m = this.current();
+    var s = this.currentStep();
+    if (!m || !s) return;
+    var p = this.world.player;
+    var dx = p.x - s.target.x;
+    var dz = p.z - s.target.z;
+    var dist = Math.sqrt(dx * dx + dz * dz);
+
+    // The escape timer only runs on the escape step.
+    if (s.kind === 'escape') {
+      if (this.missionTimer <= 0) this.missionTimer = s.time;
+      this.missionTimer -= dt;
+      this.world.hud.setTimer(this.missionTimer);
+      if (this.missionTimer <= 0) {
+        this.fail('The safehouse window closed. Vera will call again — try the job over.');
+        return;
+      }
+    } else {
+      this.world.hud.setTimer(0);
+    }
+
+    var near = dist < s.radius;
+    if (s.kind === 'reach' || s.kind === 'deliverCar') {
+      if (near && (s.kind === 'reach' || p.inCar)) this.advance();
+      return;
+    }
+    if (s.kind === 'steal') {
+      if (p.inCar && p.car && p.car.name === s.carName) this.advance();
+      return;
+    }
+    if (s.kind === 'pickup' || s.kind === 'rob') {
+      if (near && !p.inCar) {
+        this.holdTimer += dt;
+        this.world.hud.setProgress(this.holdTimer / s.hold, s.kind === 'rob' ? 'Cleaning out the jewelers…' : 'Grabbing the package…');
+        if (this.holdTimer >= s.hold) {
+          if (s.kind === 'pickup') {
+            SC.audio.pickup();
+            this.world.police.addWanted(2);
+            this.world.hud.say('Package grabbed. Two stars — the docks called it in!');
+          } else {
+            SC.audio.cash();
+            this.world.police.addWanted(3);
+            this.world.hud.say('Alarm tripped! Three stars — get to the safehouse!');
+          }
+          this.advance();
         }
-        state.events.push({ type: 'missionStage', name: mission.name, label: 'Package grabbed — thugs incoming, run!' });
+      } else {
+        this.holdTimer = 0;
+        this.world.hud.setProgress(0, '');
       }
+      return;
     }
-  } else if (mission.stage === 'deliver') {
-    if (distance(player.x, player.y, mission.target.x, mission.target.y) < 70) {
-      completeMission(state);
+    if (s.kind === 'escape') {
+      if (near) this.advance();
+      return;
     }
-  }
-}
+  };
 
-/** The current objective marker for the HUD and the minimap (mission, fare, or start point). */
-export function missionTarget(state) {
-  if (state.mission) return state.mission.target;
-  if (state.fare) return state.fare.stage === 'pickup' ? state.fare.pickup : state.fare.drop;
-  const start = missionStartPoint(state);
-  if (start) return { x: start.x, y: start.y, label: start.label };
-  return null;
-}
+  // Jump the story to a mission (used by screenshots and the save file).
+  Missions.prototype.setMission = function (index, step) {
+    this.index = SC.clamp(index, 0, MISSION_DEFS.length - 1);
+    this.step = step || 0;
+    this.holdTimer = 0;
+    this.missionTimer = 0;
+    this.allDone = this.index >= MISSION_DEFS.length;
+    this.updateBeacon();
+  };
 
-/** Taxi fares: one at a time, only while driving and with no mission running. */
-export function updateFare(state, dt) {
-  const player = state.player;
-  if (!state.fare) {
-    if (!state.mission && player.inCar) {
-      state.fareDelay = (state.fareDelay || 4) - dt;
-      if (state.fareDelay <= 0) {
-        const pickup = randomRoadPoint(state.rng, state.city);
-        const drop = randomRoadPoint(state.rng, state.city);
-        const dist = distance(pickup.x, pickup.y, drop.x, drop.y);
-        state.fare = {
-          stage: 'pickup',
-          pickup: { x: pickup.x, y: pickup.y, label: 'Fare waiting' },
-          drop: { x: drop.x, y: drop.y, label: 'Fare destination' },
-          timer: 30 + dist / 22,
-          pay: FARE.pay,
-        };
-      }
-    }
-    return;
-  }
-  const fare = state.fare;
-  fare.timer -= dt;
-  if (fare.timer <= 0) {
-    state.fare = null;
-    state.fareDelay = 6;
-    state.events.push({ type: 'fareFail' });
-    return;
-  }
-  if (!player.inCar) {
-    // Out of the car with a fare waiting: the passenger walks off after a while.
-    fare.timer -= dt * 0.5;
-    return;
-  }
-  if (fare.stage === 'pickup' && distance(player.x, player.y, fare.pickup.x, fare.pickup.y) < FARE.radius) {
-    fare.stage = 'deliver';
-    state.events.push({ type: 'fareStage', label: 'Passenger in — drive to the marker' });
-    playCash();
-  } else if (fare.stage === 'deliver' && distance(player.x, player.y, fare.drop.x, fare.drop.y) < FARE.radius) {
-    const bonus = Math.floor(fare.timer * FARE.bonusPerSecond);
-    player.cash += fare.pay + bonus;
-    state.events.push({ type: 'fareDone', amount: fare.pay + bonus });
-    playCash();
-    state.fare = null;
-    state.fareDelay = 5;
-  }
-}
+  SC.Missions = Missions;
+  SC.MISSION_DEFS = MISSION_DEFS;
+})();
