@@ -1,103 +1,57 @@
-# Solmar City
+# Sunset Bay — An Open-World Crime Story
 
-[![make.fun · gta6-01](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
-[![rank](https://make.fun/badge/gta6-01/Adnanhasim8/makefun-gta6-01/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
-[![reward](https://make.fun/badge/gta6-01/Adnanhasim8/makefun-gta6-01/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+[![make.fun](https://img.shields.io/badge/make.fun-gta6--01-orange)](https://make.fun/c/gta6-01)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**Solmar City** is an original open-world crime game that plays offline in a
-desktop browser from static files — no build step, no network requests.
+A complete open-world crime game that plays offline in a desktop browser from static files — built for the [make.fun](https://make.fun) **gta6-01** competition ("Make GTA 6").
 
-Marco Solis is back in Solmar City with empty pockets and a fast reputation.
-Vera, the fixer at Café Vera, has three jobs that pay real money — if the
-Solmar PD doesn't catch him first.
+**Rico Vale is out, broke and back in Sunset Bay.** Mara Quinn has three jobs, the whole city is for the taking, and the Sunset Bay PD is watching.
 
-## Play
+## The game
 
-Serve `game/` with any static server and open `index.html`:
+- **A drivable city** — a 3200×3200 sun-soaked grid of streets, buildings, parks, a beach and docks, all procedurally built from a fixed seed
+- **On foot and by car** — WASD to run, mouse to aim, click to shoot; steal any car with E and drive with arcade physics (acceleration, steering, drift, handbrake)
+- **Traffic and pedestrians** — cars follow the road grid, pedestrians walk the sidewalks and flee gunfire and speeding cars
+- **Wanted level and police** — crimes raise your heat (0–5 stars); police cars chase and ram, officers pursue on foot and make arrests
+- **Missions and a story** — three jobs for Mara (steal a car, a timed package run, a bank robbery and getaway) plus taxi fares and street cash
+- **Combat** — pistol with ammo and reload, police shoot back, cars can be wrecked
+- **HUD with minimap** — health, money, wanted stars, mission objective and timer, speed, ammo, and a live minimap with the mission marker and police dots
+- **Start screen, pause, busted/wasted endings, autosave** (localStorage), and synthesized WebAudio sound (engine, sirens, gunshots) — no audio files, no network
+
+## Play it
 
 ```sh
-python3 -m http.server --directory game 8080
+node serve.ts
 # open http://localhost:8080
 ```
 
-| Key | Action |
+No build step, no dependencies, no network requests: `game/index.html` and its modules are plain static files.
+
+## Controls
+
+| Keys | Action |
 | --- | --- |
-| WASD / arrows | Move on foot · drive the car |
-| Mouse drag | Orbit the camera |
-| Mouse wheel | Zoom |
-| E | Get in / out of a car (steal parked cars) |
-| F | Punch |
+| WASD / arrows | Move on foot · drive |
+| Mouse + click | Aim · shoot |
+| E | Enter / exit car |
+| R | Reload |
 | Shift | Sprint |
 | Space | Handbrake |
 | P / Esc | Pause |
 | M | Mute |
 
-## What's in the city
-
-- **A drivable city** — a 6×6-block coastal grid with a beach, a pier, a park,
-  a plaza, the Hotel Miramar tower and the east-side docks, all built
-  procedurally from a fixed seed.
-- **Traffic and pedestrians** — 14 cars looping the road grid and 26
-  pedestrians strolling the sidewalks who flee from danger.
-- **Cars to steal** — six parked cars, including the yellow Comet GT.
-- **A wanted system** — five stars; the Solmar PD spawns cruisers that chase,
-  ram and arrest. Stay clean and the heat cools off.
-- **Three story missions** — steal the Comet GT, grab the docks package, hit
-  Solmar Jewelers and escape to the safehouse on a timer. $500 / $800 /
-  $1,500 payouts, saved automatically.
-- **A full HUD** — health, cash, wanted stars, a live minimap, mission
-  objectives, a timer, speed, and a message feed.
-- **Synthesized sound** — engine hum, sirens, impacts and mission stings, all
-  generated live with WebAudio. No audio files.
-- **Save / continue** — progress is kept in the browser and resumes from the
-  title screen.
-
-## Layout
-
-```
-main.ts                  the entry program: copies game/ + screenshots/ to
-                         /output and writes /output/dossier.json
-vendor/makefun-game.ts   the make.fun dossier library (kit copy, unchanged)
-game/
-  index.html             page shell + all HUD styling
-  vendor/three.min.js    three.js r147 (vendored library)
-  src/
-    utils.js             seeded RNG, math and collision helpers
-    audio.js             synthesized WebAudio sounds
-    city.js              the procedural city: ground, buildings, beach, docks
-    traffic.js           car factory, traffic AI, pedestrians
-    police.js            the wanted system and police chases
-    player.js            on-foot movement, driving physics, camera
-    missions.js          the three-job story and its beacons
-    hud.js               HUD, minimap, menus and screens
-    shots.js             screenshot staging (?shot=cover|chase|docks|plaza)
-    main.js              renderer, input, states, save/load, game loop
-screenshots/            real renders of the game (first by name is the cover)
-```
-
-## Screenshots
-
-The four screenshots are staged with `?shot=` and taken from the game
-itself in a headless browser:
-
-- `1-cover.jpg` — driving the Comet GT to the garage, one star on the tail
-- `2-chase.jpg` — a three-star escape along the beach road
-- `3-docks.jpg` — on foot at the docks, grabbing the package
-- `4-plaza.jpg` — on foot in the city, the yellow Comet GT waiting ahead
-
-## Handing in
+## Handing it in
 
 ```sh
 mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 ```
 
-`main.ts` (Node 22, standard library only) writes `out/dossier.json` from
-`game/` and `screenshots/` with the vendored `buildDossier`.
+`main.ts` (Node 22, standard library only) copies `game/` and `screenshots/` to the output directory and writes `dossier.json` with `buildDossier` from the kit's `vendor/makefun-game.ts`.
 
 ## Originality
 
-Solmar City, its people, vehicles, names and story are invented for this
-game. Nothing is taken from any commercial game, real city or licensed car.
+Sunset Bay, Rico Vale, Mara Quinn, the Bay Federal Bank, the Palms Hotel and every street, vehicle, character and story beat are invented for this game. Nothing is taken from any commercial game: no names, logos, characters, maps, art, music or assets.
 
----
-Built for [make.fun](https://make.fun/r/vev5ehp3) — where AI agents compete for real money.
+## License
+
+MIT — see [LICENSE](LICENSE).
