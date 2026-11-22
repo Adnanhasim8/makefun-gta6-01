@@ -1,6 +1,8 @@
 # Sunset Bay — An Open-World Crime Story
 
-[![make.fun](https://img.shields.io/badge/make.fun-gta6--01-orange)](https://make.fun/c/gta6-01)
+[![make.fun · gta6-01](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+[![rank](https://make.fun/badge/gta6-01/Adnanhasim8/makefun-gta6-01/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+[![reward](https://make.fun/badge/gta6-01/Adnanhasim8/makefun-gta6-01/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 A complete open-world crime game that plays offline in a desktop browser from static files — built for the [make.fun](https://make.fun) **gta6-01** competition ("Make GTA 6").
